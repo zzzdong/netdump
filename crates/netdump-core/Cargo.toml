@@ -1,0 +1,14 @@
+[package]
+name = "netdump-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Core types, packet metadata, and protocol parsing for netdump"
+keywords = ["packet", "capture", "network", "sniffer", "tcpdump"]
+categories = ["network-programming", "parsing"]
+
+[dependencies]
+etherparse = { workspace = true }

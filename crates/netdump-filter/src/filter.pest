@@ -1,0 +1,33 @@
+filter = { SOI ~ expr ~ EOI }
+expr = { or_expr }
+
+or_expr = { and_expr ~ (or_op ~ and_expr)* }
+and_expr = { not_expr ~ (and_op? ~ not_expr)* }
+not_expr = { not_op ~ primary | primary }
+primary = { predicate | "(" ~ expr ~ ")" }
+
+predicate = { direction? ~ (proto | host | port | portrange | net | len_expr | ether_host) }
+direction = { ^"src" | ^"dst" }
+proto = { ^"ip6" | ^"ip" | ^"tcp" | ^"udp" | ^"icmp6" | ^"icmp" | ^"arp" | ^"rarp" }
+host = { ^"host" ~ ip }
+port = { ^"port" ~ number }
+portrange = { ^"portrange" ~ number ~ "-" ~ number }
+net = { ^"net" ~ ip ~ netmask? }
+netmask = { "/" ~ number | ^"mask" ~ ip }
+len_expr = { ^"len" ~ relop ~ number | ^"greater" ~ number | ^"less" ~ number }
+relop = { ">=" | "<=" | "==" | "=" | "!=" | ">" | "<" }
+ether_host = { ^"ether" ~ direction? ~ ^"host"? ~ mac }
+
+ip = @{ ipv4 | ipv6 }
+ipv4 = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+// 允许标准的 IPv6 写法（含 ::），最终由 Rust 的 Ipv6Addr 做严格校验。
+ipv6 = @{ (ASCII_HEX_DIGIT | ":")+ }
+
+mac = @{ ASCII_HEX_DIGIT{1,2} ~ ":" ~ ASCII_HEX_DIGIT{1,2} ~ ":" ~ ASCII_HEX_DIGIT{1,2} ~ ":" ~ ASCII_HEX_DIGIT{1,2} ~ ":" ~ ASCII_HEX_DIGIT{1,2} ~ ":" ~ ASCII_HEX_DIGIT{1,2} }
+number = @{ ASCII_DIGIT+ }
+
+or_op = { ^"or" | "||" }
+and_op = { ^"and" | "&&" }
+not_op = { ^"not" }
+
+WHITESPACE = _{ " " | "\t" | "\n" | "\r" }

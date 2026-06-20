@@ -1,0 +1,24 @@
+[workspace]
+members = [
+    "crates/netdump-core",
+    "crates/netdump-filter",
+    "crates/netdump-cbpf",
+    "crates/netdump-afpacket",
+    "crates/netdump-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["zzzdong <kuwater@163.com>"]
+license = "MIT"
+repository = "https://github.com/zzzdong/netdump.git"
+homepage = "https://github.com/zzzdong/netdump.git"
+
+[workspace.dependencies]
+pest = "2.8.6"
+pest_derive = "2.8.6"
+etherparse = "0.20.2"
+libc = "0.2.186"
+clap = { version = "4.6.1", features = ["derive"] }

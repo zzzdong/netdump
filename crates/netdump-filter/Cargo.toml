@@ -1,0 +1,20 @@
+[package]
+name = "netdump-filter"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "pcap-filter expression parser and CBPF compiler for netdump"
+keywords = ["pcap-filter", "packet-filter", "parser", "compiler", "tcpdump"]
+categories = ["network-programming", "parsing", "compilers"]
+
+[dependencies]
+netdump-core = { path = "../netdump-core", version = "0.1.0" }
+pest = { workspace = true }
+pest_derive = { workspace = true }
+
+[dev-dependencies]
+netdump-cbpf = { path = "../netdump-cbpf" }
+pcap = "2.4"

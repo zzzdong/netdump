@@ -1,0 +1,15 @@
+[package]
+name = "netdump-cbpf"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "A CBPF (classic BPF / Linux socket filter) virtual machine for packet filtering"
+keywords = ["cbpf", "bpf", "packet-filter", "virtual-machine", "tcpdump"]
+categories = ["network-programming", "virtual-machine"]
+
+[dependencies]
+netdump-core = { path = "../netdump-core", version = "0.1.0" }
+netdump-filter = { path = "../netdump-filter", version = "0.1.0" }

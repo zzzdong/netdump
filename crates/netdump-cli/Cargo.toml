@@ -1,0 +1,24 @@
+[package]
+name = "netdump"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "A simple tcpdump clone in Rust — command-line interface"
+keywords = ["tcpdump", "packet-capture", "network", "sniffer"]
+categories = ["network-programming", "command-line-utilities"]
+
+[[bin]]
+name = "netdump"
+path = "src/main.rs"
+
+[dependencies]
+netdump-core = { path = "../netdump-core", version = "0.1.0" }
+netdump-filter = { path = "../netdump-filter", version = "0.1.0" }
+netdump-cbpf = { path = "../netdump-cbpf", version = "0.1.0" }
+netdump-afpacket = { path = "../netdump-afpacket", version = "0.1.0", features = ["netdump-filter"] }
+clap = { workspace = true }
+pcap-file = "2.0.0"
+libc = { workspace = true }

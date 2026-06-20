@@ -1,0 +1,16 @@
+[package]
+name = "netdump-afpacket"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "AF_PACKET + TPACKET_V3 zero-copy packet capture engine for Linux"
+keywords = ["af-packet", "tpacket", "packet-capture", "zero-copy", "linux"]
+categories = ["network-programming", "os::linux-apis"]
+
+[dependencies]
+netdump-core = { path = "../netdump-core", version = "0.1.0" }
+libc = { workspace = true }
+netdump-filter = { path = "../netdump-filter", version = "0.1.0", optional = true }
