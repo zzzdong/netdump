@@ -443,7 +443,7 @@ fn set_promiscuous(fd: RawFd, ifname: &str) -> Result<(), NetdumpError> {
             ifname.len(),
         );
 
-        if libc::ioctl(fd, libc::SIOCGIFFLAGS, &mut ifr) < 0 {
+        if libc::ioctl(fd, libc::SIOCGIFFLAGS as libc::Ioctl, &mut ifr) < 0 {
             return Err(NetdumpError::Io(format!(
                 "ioctl SIOCGIFFLAGS: {}",
                 std::io::Error::last_os_error()
@@ -452,7 +452,7 @@ fn set_promiscuous(fd: RawFd, ifname: &str) -> Result<(), NetdumpError> {
 
         ifr.ifr_ifru.ifru_flags |= libc::IFF_PROMISC as i16;
 
-        if libc::ioctl(fd, libc::SIOCSIFFLAGS, &mut ifr) < 0 {
+        if libc::ioctl(fd, libc::SIOCSIFFLAGS as libc::Ioctl, &mut ifr) < 0 {
             return Err(NetdumpError::Io(format!(
                 "ioctl SIOCSIFFLAGS: {}",
                 std::io::Error::last_os_error()

@@ -32,7 +32,9 @@ struct Args {
     interface: Option<String>,
 
     /// Filter expression, e.g. `tcp port 80`.
-    filter: Option<String>,
+    /// Must be the last argument; all remaining values are collected as the filter.
+    #[arg(trailing_var_arg = true)]
+    filter: Vec<String>,
 
     /// Read the filter expression from a file.
     #[arg(short, long, value_name = "FILE")]
@@ -177,7 +179,7 @@ fn run() -> Result<(), NetdumpError> {
         }
         Some(s.to_string())
     } else {
-        args.filter.clone()
+        Some(args.filter.join(" "))
     };
 
     let program = if let Some(expr) = &filter_expr {
@@ -779,7 +781,7 @@ fn get_iface_mac(ifname: &str) -> Result<[u8; 6], NetdumpError> {
         ifr.ifr_name[i] = b as i8;
     }
 
-    let r = unsafe { libc::ioctl(fd, libc::SIOCGIFHWADDR, &mut ifr) };
+    let r = unsafe { libc::ioctl(fd, libc::SIOCGIFHWADDR as libc::Ioctl, &mut ifr) };
     unsafe { libc::close(fd) };
 
     if r < 0 {
