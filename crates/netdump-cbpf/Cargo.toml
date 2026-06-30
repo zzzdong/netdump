@@ -8,7 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 description = "A CBPF (classic BPF / Linux socket filter) virtual machine for packet filtering"
 keywords = ["cbpf", "bpf", "packet-filter", "virtual-machine", "tcpdump"]
-categories = ["network-programming", "virtual-machine"]
+categories = ["network-programming"]
 
 [dependencies]
 netdump-core = { path = "../netdump-core", version = "0.1.1" }
