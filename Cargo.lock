@@ -281,7 +281,7 @@ checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 
 [[package]]
 name = "netdump"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "libc",
@@ -294,7 +294,7 @@ dependencies = [
 
 [[package]]
 name = "netdump-afpacket"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "libc",
  "netdump-core",
@@ -303,7 +303,7 @@ dependencies = [
 
 [[package]]
 name = "netdump-cbpf"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "netdump-core",
  "netdump-filter",
@@ -311,14 +311,14 @@ dependencies = [
 
 [[package]]
 name = "netdump-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "etherparse",
 ]
 
 [[package]]
 name = "netdump-filter"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "netdump-cbpf",
  "netdump-core",

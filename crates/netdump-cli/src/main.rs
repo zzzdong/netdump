@@ -179,7 +179,12 @@ fn run() -> Result<(), NetdumpError> {
         }
         Some(s.to_string())
     } else {
-        Some(args.filter.join(" "))
+        let filter = args.filter.join(" ").trim().to_string();
+        if filter.is_empty() {
+            None
+        } else {
+            Some(filter)
+        }
     };
 
     let program = if let Some(expr) = &filter_expr {
@@ -273,6 +278,17 @@ fn run() -> Result<(), NetdumpError> {
         } else {
             args.snaplen as usize
         };
+
+        // 在打开 socket 之前编译 filter，通过 OpenOptions 传入，
+        // 让库层在创建 ring buffer 之前就将 filter 加载到内核。
+        let kernel_filter = if let Some(prog) = program.as_ref()
+            && !args.userspace_filter
+        {
+            Some(prog.iter().map(|i| RawBpfInsn::from(*i)).collect())
+        } else {
+            None
+        };
+
         let options = OpenOptions {
             snaplen,
             promiscuous: !args.no_promiscuous,
@@ -283,6 +299,7 @@ fn run() -> Result<(), NetdumpError> {
             block_nr: args.block_nr as usize,
             frame_size: Some(args.frame_size as usize),
             retire_tov_ms: Some(args.retire_tov_ms),
+            filter: kernel_filter,
         };
         let mut socket = AfPacketSocket::open_with_options(&ifname, options)?;
 
@@ -292,15 +309,6 @@ fn run() -> Result<(), NetdumpError> {
         } else {
             None
         };
-
-        let mut kernel_attached = false;
-        if let Some(prog) = program.as_ref()
-            && !args.userspace_filter
-        {
-            let raw: Vec<RawBpfInsn> = prog.iter().map(|i| RawBpfInsn::from(*i)).collect();
-            socket.attach_filter(&raw)?;
-            kernel_attached = true;
-        }
 
         loop {
             if let Some(max) = args.count
@@ -312,8 +320,8 @@ fn run() -> Result<(), NetdumpError> {
             let packet = socket.next_packet()?;
             let data = &packet.data;
 
-            let matched =
-                kernel_attached || program.as_ref().is_none_or(|prog| Vm::exec(prog, data));
+            let matched = socket.kernel_filter_attached
+                || program.as_ref().is_none_or(|prog| Vm::exec(prog, data));
             if !matched {
                 continue;
             }
@@ -431,7 +439,7 @@ fn print_packet(packet: &Packet, args: &Args, ctx: &mut PktCtx) {
 
     if args.quiet {
         let line = if let Some(info) = parse_packet(data) {
-            let proto = protocol_name(info.protocol.unwrap_or(0), args.no_resolve >= 2);
+            let proto = protocol_name(info.protocol.unwrap_or(0));
             let src = format_addr(&info.src_ip, info.src_port, args.no_resolve >= 1);
             let dst = format_addr(&info.dst_ip, info.dst_port, args.no_resolve >= 1);
             if ts.is_empty() {
@@ -466,7 +474,7 @@ fn print_packet(packet: &Packet, args: &Args, ctx: &mut PktCtx) {
     }
 
     if let Some(info) = parse_packet(data) {
-        let proto = protocol_name(info.protocol.unwrap_or(0), args.no_resolve >= 2);
+        let proto = protocol_name(info.protocol.unwrap_or(0));
         let src = format_addr(&info.src_ip, info.src_port, args.no_resolve >= 1);
         let dst = format_addr(&info.dst_ip, info.dst_port, args.no_resolve >= 1);
         let mut line = format!("{src} > {dst} {proto}");
@@ -536,17 +544,18 @@ fn print_packet(packet: &Packet, args: &Args, ctx: &mut PktCtx) {
 
     println!("{}", parts.join(" "));
 
-    // -x / -X 十六进制输出
+    // -x / -X 十六进制输出（自适应终端宽度）
     let hex_level = args.hex;
     let hex_ascii_level = args.hex_ascii;
     if hex_level > 0 || hex_ascii_level > 0 {
+        let bpl = hex_bytes_per_line(terminal_width());
         // -xx / -XX 包含链路层头
         let do_hex = |payload: &[u8]| {
             if hex_level > 0 {
-                print!("{}", format_hex(payload));
+                print!("{}", format_hex(payload, bpl));
             }
             if hex_ascii_level > 0 {
-                print!("{}", format_hex_ascii(payload));
+                print!("{}", format_hex_ascii(payload, bpl));
             }
         };
         if hex_level >= 2 || hex_ascii_level >= 2 {
@@ -564,7 +573,9 @@ fn print_packet(packet: &Packet, args: &Args, ctx: &mut PktCtx) {
         && let Some(payload) = data.get(14..)
         && !payload.is_empty()
     {
-        println!("{}", format_ascii(payload));
+        let tw = terminal_width();
+        let bpl = ((tw as f64 * 0.85) as usize).max(64).min(512);
+        println!("{}", format_ascii(payload, bpl));
     }
 
     // -l: 行缓冲（抓包输出立即刷新）
@@ -574,9 +585,9 @@ fn print_packet(packet: &Packet, args: &Args, ctx: &mut PktCtx) {
     }
 }
 
-fn format_ascii(payload: &[u8]) -> String {
+fn format_ascii(payload: &[u8], bpl: usize) -> String {
     payload
-        .chunks(64)
+        .chunks(bpl)
         .map(|chunk| {
             chunk
                 .iter()
@@ -593,27 +604,35 @@ fn format_ascii(payload: &[u8]) -> String {
         .join("\n")
 }
 
-/// Hex dump output, same format as tcpdump -x (16 bytes per line).
-fn format_hex(data: &[u8]) -> String {
+/// Hex dump output, same format as tcpdump -x, with adaptive width.
+fn format_hex(data: &[u8], bpl: usize) -> String {
     let mut out = String::new();
-    for (i, chunk) in data.chunks(16).enumerate() {
-        out.push_str(&format!("    {:04x}: ", i * 16));
+    for (i, chunk) in data.chunks(bpl).enumerate() {
+        out.push_str(&format!("    {:04x}: ", i * bpl));
         for (j, b) in chunk.iter().enumerate() {
             out.push_str(&format!("{b:02x}"));
-            if j == 7 {
+            if j == bpl / 2 - 1 {
                 out.push_str("  ");
-            } else if j < 15 {
+            } else if j < bpl - 1 {
                 out.push(' ');
             }
         }
-        if chunk.len() < 16 {
-            let remaining = 16 - chunk.len();
-            let space = if chunk.len() <= 7 { 1 } else { 0 };
-            for _ in 0..remaining {
+        if chunk.len() < bpl {
+            let half = bpl / 2;
+            let missing_first = if chunk.len() > half {
+                0usize
+            } else {
+                half - chunk.len()
+            };
+            let missing_second = bpl - chunk.len() - missing_first;
+            for _ in 0..missing_first {
                 out.push_str("   ");
             }
-            if space != 0 {
-                out.push(' ');
+            if chunk.len() > half {
+                out.push_str("  ");
+            }
+            for _ in 0..missing_second {
+                out.push_str("   ");
             }
         }
         out.push('\n');
@@ -621,22 +640,34 @@ fn format_hex(data: &[u8]) -> String {
     out
 }
 
-/// Hex dump with ASCII side-by-side, same format as tcpdump -X.
-fn format_hex_ascii(data: &[u8]) -> String {
+/// Hex dump with ASCII side-by-side, same format as tcpdump -X, with adaptive width.
+fn format_hex_ascii(data: &[u8], bpl: usize) -> String {
     let mut out = String::new();
-    for (i, chunk) in data.chunks(16).enumerate() {
-        out.push_str(&format!("    {:04x}: ", i * 16));
+    for (i, chunk) in data.chunks(bpl).enumerate() {
+        out.push_str(&format!("    {:04x}: ", i * bpl));
         for (j, b) in chunk.iter().enumerate() {
             out.push_str(&format!("{b:02x}"));
-            if j == 7 {
+            if j == bpl / 2 - 1 {
                 out.push_str("  ");
-            } else if j < 15 {
+            } else if j < bpl - 1 {
                 out.push(' ');
             }
         }
-        if chunk.len() < 16 {
-            let remaining = 16 - chunk.len();
-            for _ in 0..remaining {
+        if chunk.len() < bpl {
+            let half = bpl / 2;
+            let missing_first = if chunk.len() > half {
+                0usize
+            } else {
+                half - chunk.len()
+            };
+            let missing_second = bpl - chunk.len() - missing_first;
+            for _ in 0..missing_first {
+                out.push_str("   ");
+            }
+            if chunk.len() > half {
+                out.push_str("  ");
+            }
+            for _ in 0..missing_second {
                 out.push_str("   ");
             }
         }
@@ -651,6 +682,29 @@ fn format_hex_ascii(data: &[u8]) -> String {
         out.push('\n');
     }
     out
+}
+
+/// Calculate optimal hex bytes-per-line based on terminal width.
+/// Uses a minimum of 16 for terminals <= 80 cols, then 32, 48, 64.
+fn hex_bytes_per_line(term_width: usize) -> usize {
+    // "    {:04x}: " + bpl * "XX " + "  " (midpoint separator) ≈ 12 + 3*bpl
+    let target = (term_width as f64 * 0.85) as usize;
+    let max_n = if target > 12 { (target - 12) / 3 } else { 16 };
+    // Round down to nearest 16
+    let n = (max_n / 16) * 16;
+    n.clamp(16, 64)
+}
+
+/// Get terminal width in columns. Defaults to 80 on failure.
+fn terminal_width() -> usize {
+    unsafe {
+        let mut ws: libc::winsize = std::mem::zeroed();
+        if libc::ioctl(libc::STDOUT_FILENO, libc::TIOCGWINSZ, &mut ws) == 0 && ws.ws_col > 0 {
+            ws.ws_col as usize
+        } else {
+            80
+        }
+    }
 }
 
 fn format_mac(mac: &[u8]) -> String {
@@ -674,29 +728,26 @@ fn format_addr(ip: &Option<IpAddr>, port: Option<u16>, numeric: bool) -> String 
     }
 }
 
-fn port_name(port: u16) -> &'static str {
+fn port_name(port: u16) -> String {
     match port {
-        20 => "ftp-data",
-        21 => "ftp",
-        22 => "ssh",
-        23 => "telnet",
-        25 => "smtp",
-        53 => "domain",
-        80 => "http",
-        110 => "pop3",
-        143 => "imap",
-        443 => "https",
-        993 => "imaps",
-        995 => "pop3s",
-        8080 => "http-alt",
-        _ => "",
+        20 => "ftp-data".into(),
+        21 => "ftp".into(),
+        22 => "ssh".into(),
+        23 => "telnet".into(),
+        25 => "smtp".into(),
+        53 => "domain".into(),
+        80 => "http".into(),
+        110 => "pop3".into(),
+        143 => "imap".into(),
+        443 => "https".into(),
+        993 => "imaps".into(),
+        995 => "pop3s".into(),
+        8080 => "http-alt".into(),
+        _ => port.to_string(),
     }
 }
 
-fn protocol_name(proto: u8, numeric: bool) -> String {
-    if numeric {
-        return proto.to_string();
-    }
+fn protocol_name(proto: u8) -> String {
     match proto {
         1 => "icmp".to_string(),
         6 => "tcp".to_string(),
@@ -778,7 +829,7 @@ fn get_iface_mac(ifname: &str) -> Result<[u8; 6], NetdumpError> {
     let name_bytes = ifname.as_bytes();
     let len = name_bytes.len().min(libc::IFNAMSIZ - 1);
     for (i, &b) in name_bytes[..len].iter().enumerate() {
-        ifr.ifr_name[i] = b as i8;
+        ifr.ifr_name[i] = b as libc::c_char;
     }
 
     let r = unsafe { libc::ioctl(fd, libc::SIOCGIFHWADDR as libc::Ioctl, &mut ifr) };
@@ -798,4 +849,63 @@ fn get_iface_mac(ifname: &str) -> Result<[u8; 6], NetdumpError> {
         *b = sa_data[i] as u8;
     }
     Ok(mac)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_hex_16() {
+        let data = (0u8..32).collect::<Vec<_>>();
+        let s = format_hex(&data, 16);
+        let lines: Vec<&str> = s.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].starts_with("    0000:"));
+        assert!(lines[1].starts_with("    0010:"));
+        // 16 bytes: "XX XX ... XX" with "  " after byte 8 → ~58 chars
+        assert!(lines[0].len() > 55 && lines[0].len() < 65);
+    }
+
+    #[test]
+    fn test_format_hex_32() {
+        let data = (0u8..64).collect::<Vec<_>>();
+        let s = format_hex(&data, 32);
+        let lines: Vec<&str> = s.lines().collect();
+        assert_eq!(lines.len(), 2);
+        // 32 bytes per line → ~106 chars
+        assert!(lines[0].len() > 100 && lines[0].len() < 115);
+    }
+
+    #[test]
+    fn test_format_hex_partial_last_line() {
+        let data = (0u8..40).collect::<Vec<_>>();
+        let s = format_hex(&data, 32);
+        let lines: Vec<&str> = s.lines().collect();
+        assert_eq!(lines.len(), 2);
+        // Second line has only 8 bytes
+        assert!(lines[1].starts_with("    0020:"));
+    }
+
+    #[test]
+    fn test_format_hex_ascii_32() {
+        let data = (0u8..64).collect::<Vec<_>>();
+        let s = format_hex_ascii(&data, 32);
+        let lines: Vec<&str> = s.lines().collect();
+        assert_eq!(lines.len(), 2);
+        // 32 bytes hex + ASCII → ~138 chars
+        assert!(lines[0].len() > 130 && lines[0].len() < 150);
+    }
+
+    #[test]
+    fn test_hex_bytes_per_line() {
+        // ≤100 cols → 16 (tcpdump compat)
+        assert_eq!(hex_bytes_per_line(80), 16);
+        // ~140 cols → 32
+        assert_eq!(hex_bytes_per_line(140), 32);
+        // ~200 cols → 48
+        assert_eq!(hex_bytes_per_line(200), 48);
+        // Clamp to 64 max
+        assert_eq!(hex_bytes_per_line(500), 64);
+    }
 }

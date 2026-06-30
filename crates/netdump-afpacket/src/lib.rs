@@ -36,6 +36,10 @@ pub struct OpenOptions {
     pub frame_size: Option<usize>,
     /// Block retire timeout (milliseconds), None uses default.
     pub retire_tov_ms: Option<u32>,
+    /// Pre-compiled BPF program to attach before setting up the ring buffer.
+    /// When set, the kernel applies the filter before packets enter the ring,
+    /// avoiding the "pre-filter leak" window.
+    pub filter: Option<Vec<RawBpfInsn>>,
 }
 
 impl Default for OpenOptions {
@@ -48,6 +52,7 @@ impl Default for OpenOptions {
             buffer_size: None,
             frame_size: None,
             retire_tov_ms: None,
+            filter: None,
         }
     }
 }
@@ -62,6 +67,8 @@ pub struct AfPacketSocket {
     block_nr: usize,
     current_block: usize,
     cursor: Option<BlockCursor>,
+    /// Whether a kernel-side BPF filter has been attached (via OpenOptions.filter).
+    pub kernel_filter_attached: bool,
 }
 
 /// Cursor tracking position within the current block.
@@ -150,6 +157,32 @@ impl AfPacketSocket {
         // 先 bind 接口，再设置 RX_RING，顺序与 babyshark / 内核文档一致。
         bind_to_interface(fd.as_raw_fd(), ifindex)?;
 
+        // 在创建 ring buffer 之前 attach BPF filter，这样从根源上避免预填充问题。
+        let kernel_filter_attached = if let Some(ref prog) = options.filter {
+            let fprog = libc::sock_fprog {
+                len: prog.len() as u16,
+                filter: prog.as_ptr() as *mut libc::sock_filter,
+            };
+            let r = unsafe {
+                libc::setsockopt(
+                    fd.as_raw_fd(),
+                    libc::SOL_SOCKET,
+                    libc::SO_ATTACH_FILTER,
+                    &fprog as *const _ as *const libc::c_void,
+                    std::mem::size_of_val(&fprog) as libc::socklen_t,
+                )
+            };
+            if r < 0 {
+                return Err(NetdumpError::Io(format!(
+                    "setsockopt SO_ATTACH_FILTER: {}",
+                    std::io::Error::last_os_error()
+                )));
+            }
+            true
+        } else {
+            false
+        };
+
         let page_size = page_size();
         // 帧大小需要是 2 的幂，并且整除块大小，否则内核会返回 EINVAL。
         let frame_size = options
@@ -213,6 +246,7 @@ impl AfPacketSocket {
             block_nr,
             current_block: 0,
             cursor: None,
+            kernel_filter_attached,
         })
     }
 

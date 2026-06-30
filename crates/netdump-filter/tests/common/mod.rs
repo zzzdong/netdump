@@ -34,7 +34,7 @@ pub fn build_packet_with_ihl(
     dst_port: u16,
     ihl: u8,
 ) -> Vec<u8> {
-    assert!(ihl >= 5 && ihl <= 15, "IHL 必须在 5..=15 之间");
+    assert!((5..=15).contains(&ihl), "IHL 必须在 5..=15 之间");
     let ip_header_len = (ihl as usize) * 4;
     let transport_len = if proto == IPPROTO_UDP { 8 } else { 20 };
     let mut pkt = vec![0u8; 14 + ip_header_len + transport_len];
