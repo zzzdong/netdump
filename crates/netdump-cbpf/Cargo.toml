@@ -11,5 +11,5 @@ keywords = ["cbpf", "bpf", "packet-filter", "virtual-machine", "tcpdump"]
 categories = ["network-programming", "virtual-machine"]
 
 [dependencies]
-netdump-core = { path = "../netdump-core", version = "0.1.0" }
-netdump-filter = { path = "../netdump-filter", version = "0.1.0" }
+netdump-core = { path = "../netdump-core", version = "0.1.1" }
+netdump-filter = { path = "../netdump-filter", version = "0.1.1" }

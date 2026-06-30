@@ -11,7 +11,7 @@ keywords = ["pcap-filter", "packet-filter", "parser", "compiler", "tcpdump"]
 categories = ["network-programming", "parsing", "compilers"]
 
 [dependencies]
-netdump-core = { path = "../netdump-core", version = "0.1.0" }
+netdump-core = { path = "../netdump-core", version = "0.1.1" }
 pest = { workspace = true }
 pest_derive = { workspace = true }
 

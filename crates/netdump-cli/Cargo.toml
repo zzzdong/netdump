@@ -15,10 +15,10 @@ name = "netdump"
 path = "src/main.rs"
 
 [dependencies]
-netdump-core = { path = "../netdump-core", version = "0.1.0" }
-netdump-filter = { path = "../netdump-filter", version = "0.1.0" }
-netdump-cbpf = { path = "../netdump-cbpf", version = "0.1.0" }
-netdump-afpacket = { path = "../netdump-afpacket", version = "0.1.0", features = ["netdump-filter"] }
 clap = { workspace = true }
-pcap-file = "2.0.0"
 libc = { workspace = true }
+netdump-core = { path = "../netdump-core", version = "0.1.1" }
+netdump-filter = { path = "../netdump-filter", version = "0.1.1" }
+netdump-cbpf = { path = "../netdump-cbpf", version = "0.1.1" }
+netdump-afpacket = { path = "../netdump-afpacket", version = "0.1.1", features = ["netdump-filter"] }
+pcap-file = "2.0.0"
